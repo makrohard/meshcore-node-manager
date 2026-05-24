@@ -26,6 +26,7 @@ MeshCore firmware notes
 import asyncio
 import csv
 import gc
+import inspect
 import json
 import os
 import threading
@@ -147,7 +148,7 @@ class NodeRadio:
         self._thread: threading.Thread             | None = None
         self._fetch_task    = None
         self._ping_task     = None
-        self._sub_token     = None
+        self._sub_tokens    = []
 
         # settings references (set by AppWindow after construction)
         self.settings = None
@@ -265,6 +266,48 @@ class NodeRadio:
             self._stop_loop()
             return False
 
+    def _setup_subscriptions(self):
+        """
+        Subscribe to MeshCore events.
+
+        Newer meshcore versions use subscribe(event_type, callback). Older
+        versions used subscribe(callback), which subscribed globally.
+        """
+        self._sub_tokens = []
+
+        try:
+            params = inspect.signature(self._mc.subscribe).parameters
+            supports_event_type = "event_type" in params or len(params) >= 2
+        except (TypeError, ValueError):
+            supports_event_type = True
+
+        if supports_event_type:
+            event_types = (
+                EventType.CONTACT_MSG_RECV,
+                EventType.CHANNEL_MSG_RECV,
+                EventType.MSG_SENT,
+                EventType.ACK,
+            )
+
+            try:
+                self._sub_tokens = [
+                    self._mc.subscribe(event_type, self._on_mc_event)
+                    for event_type in event_types
+                ]
+                return
+            except TypeError:
+                for sub_token in self._sub_tokens:
+                    if sub_token is None:
+                        continue
+                    try:
+                        self._mc.unsubscribe(sub_token)
+                    except Exception:
+                        pass
+                self._sub_tokens = []
+
+        self._sub_tokens = [self._mc.subscribe(self._on_mc_event)]
+
+
     async def _setup(self):
         result = await self._mc.commands.send_device_query()
         if result.type != EventType.ERROR:
@@ -273,8 +316,21 @@ class NodeRadio:
 
         await self._load_contacts()
 
-        self._sub_token  = self._mc.subscribe(self._on_mc_event)
-        self._fetch_task = self._loop.create_task(self._mc.auto_fetch_msgs(delay=5))
+        self._setup_subscriptions()
+
+        if hasattr(self._mc, "start_auto_message_fetching"):
+            await self._mc.start_auto_message_fetching()
+            self._fetch_task = None
+        elif hasattr(self._mc, "auto_fetch_msgs"):
+            self._fetch_task = self._loop.create_task(
+                self._mc.auto_fetch_msgs(delay=5)
+            )
+        else:
+            self._fetch_task = None
+            self._emit_log(
+                "meshcore auto message fetching unavailable",
+                "warn",
+            )
 
         # Auto-ping task (Serial keepalive)
         self._ping_task = self._loop.create_task(self._auto_ping_loop())
@@ -312,14 +368,25 @@ class NodeRadio:
             self._emit_log("Disconnecting…", "info")
         try:
             if self._loop and self._loop.is_running() and self._mc:
+                try:
+                    if hasattr(self._mc, "stop_auto_message_fetching"):
+                        self._submit(
+                            self._mc.stop_auto_message_fetching(),
+                            timeout=5.0,
+                        )
+                except Exception:
+                    pass
                 for task in (self._fetch_task, self._ping_task):
                     if task:
                         self._loop.call_soon_threadsafe(task.cancel)
-                if self._sub_token is not None:
+                for sub_token in self._sub_tokens:
+                    if sub_token is None:
+                        continue
                     try:
-                        self._mc.unsubscribe(self._sub_token)
+                        self._mc.unsubscribe(sub_token)
                     except Exception:
                         pass
+                self._sub_tokens = []
                 try:
                     self._submit(self._mc.disconnect(), timeout=5.0)
                 except Exception:
@@ -327,7 +394,8 @@ class NodeRadio:
         except Exception as exc:
             self._emit_log(f"Disconnect warning: {exc}", "warn")
         finally:
-            self._mc = self._fetch_task = self._ping_task = self._sub_token = None
+            self._mc = self._fetch_task = self._ping_task = None
+            self._sub_tokens = []
             self._online = False
             with self._ct_lock:
                 self._contacts.clear()
@@ -604,6 +672,14 @@ class NodeRadio:
 
     # ── send ─────────────────────────────────────────────────────────────────
 
+    def _channel_send_coro(self, text: str):
+        # Newer meshcore versions provide send_chan_msg(channel, text).
+        # Older versions used send_msg(None, text) for public broadcast.
+        if hasattr(self._mc.commands, "send_chan_msg"):
+            return self._mc.commands.send_chan_msg(0, text)
+
+        return self._mc.commands.send_msg(None, text)
+
     def _next_id(self) -> int:
         self._id_ctr += 1
         return (int(time.time() * 1000) + self._id_ctr) & 0xFFFF_FFFF
@@ -614,11 +690,12 @@ class NodeRadio:
         lid = self._next_id()
         try:
             try:
-                self._submit(self._mc.commands.send_msg(None, text))
-            except TypeError:
+                self._submit(self._channel_send_coro(text))
+            except TypeError as exc:
                 self._emit_log(
-                    "Broadcast failed — firmware may not support send_msg(None, text). "
-                    "Upgrade to dt267 v1.13+.", "err")
+                    f"Broadcast failed — meshcore channel send API incompatible: {exc}",
+                    "err",
+                )
                 return None
             msg = Message(local_id=lid, direction="tx", kind="channel",
                           peer="channel", text=text,
