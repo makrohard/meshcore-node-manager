@@ -672,6 +672,30 @@ class NodeRadio:
 
     # ── send ─────────────────────────────────────────────────────────────────
 
+    def send_advert(self, flood: bool = True) -> bool:
+        # Send one self-advert through the connected MeshCore companion.
+        if not self._online or not self._mc:
+            self._emit_log("Advert failed: offline", "warn")
+            return False
+        if not hasattr(self._mc.commands, "send_advert"):
+            self._emit_log("Advert failed: meshcore API has no send_advert", "err")
+            return False
+        try:
+            result = self._submit(
+                self._mc.commands.send_advert(flood=flood),
+                timeout=10.0,
+            )
+            result_type = getattr(result, "type", None)
+            if result_type == EventType.OK:
+                mode = "flood" if flood else "direct"
+                self._emit_log(f"Advert sent ({mode})", "ok")
+                return True
+            self._emit_log(f"Advert failed: {result_type}", "err")
+            return False
+        except Exception as exc:
+            self._emit_log(f"Advert error: {exc}", "err")
+            return False
+
     def _channel_send_coro(self, text: str):
         # Newer meshcore versions provide send_chan_msg(channel, text).
         # Older versions used send_msg(None, text) for public broadcast.

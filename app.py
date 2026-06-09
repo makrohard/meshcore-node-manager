@@ -1275,6 +1275,7 @@ class AppWindow(tk.Tk):
         btn("⏹ Disconnect",   self._do_disconnect)
         gap()
         btn("🔄 Contacts",    self._do_refresh)
+        btn("📣 Advert",      self._do_advert)
         btn("📡 Ping",        self._do_ping)
         gap()
         btn("💾 Backup",      self._do_backup)
@@ -1469,6 +1470,15 @@ class AppWindow(tk.Tk):
             self.after(0, self._tabs["📨 Direct"].update_dest_list)
             self.after(0, self._tabs["🗺 Map"].refresh)
         threading.Thread(target=run, daemon=True).start()
+
+    def _do_advert(self):
+        if not self._radio.online:
+            messagebox.showwarning("Offline", "Connect first.")
+            return
+        threading.Thread(
+            target=lambda: self._radio.send_advert(flood=True),
+            daemon=True,
+        ).start()
 
     def _do_ping(self):
         if not self._radio.online:
