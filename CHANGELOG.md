@@ -1,1 +1,2 @@
 - Add manual MeshCore advert button.
+- Add advert settings.

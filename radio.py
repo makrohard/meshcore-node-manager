@@ -148,6 +148,7 @@ class NodeRadio:
         self._thread: threading.Thread             | None = None
         self._fetch_task    = None
         self._ping_task     = None
+        self._advert_task   = None
         self._sub_tokens    = []
 
         # settings references (set by AppWindow after construction)
@@ -342,6 +343,9 @@ class NodeRadio:
                        node_name=self.node_name)
         self._emit_log(f"Online [{self._conn_type}] — {self.node_name}", "ok")
 
+        if self.settings and self.settings.get("auto_advert_enabled", False):
+            self._advert_task = self._loop.create_task(self._auto_advert_loop())
+
     async def _auto_ping_loop(self):
         """
         Periodically pings the device to prevent serial idle disconnect.
@@ -376,7 +380,7 @@ class NodeRadio:
                         )
                 except Exception:
                     pass
-                for task in (self._fetch_task, self._ping_task):
+                for task in (self._fetch_task, self._ping_task, self._advert_task):
                     if task:
                         self._loop.call_soon_threadsafe(task.cancel)
                 for sub_token in self._sub_tokens:
@@ -394,7 +398,7 @@ class NodeRadio:
         except Exception as exc:
             self._emit_log(f"Disconnect warning: {exc}", "warn")
         finally:
-            self._mc = self._fetch_task = self._ping_task = None
+            self._mc = self._fetch_task = self._ping_task = self._advert_task = None
             self._sub_tokens = []
             self._online = False
             with self._ct_lock:
@@ -672,8 +676,20 @@ class NodeRadio:
 
     # ── send ─────────────────────────────────────────────────────────────────
 
-    def send_advert(self, flood: bool = True) -> bool:
-        # Send one self-advert through the connected MeshCore companion.
+    def _auto_advert_interval_seconds(self) -> int:
+        interval = 30
+        if self.settings:
+            interval = self.settings.get("auto_advert_interval", 30)
+        try:
+            interval = int(interval)
+        except (TypeError, ValueError):
+            interval = 30
+        # Safety clamp: never auto-advert faster than once per minute.
+        interval = max(1, interval)
+        return interval * 60
+
+    async def _send_advert_async(self, flood: bool = True,
+                                 source: str = "manual") -> bool:
         if not self._online or not self._mc:
             self._emit_log("Advert failed: offline", "warn")
             return False
@@ -681,20 +697,39 @@ class NodeRadio:
             self._emit_log("Advert failed: meshcore API has no send_advert", "err")
             return False
         try:
-            result = self._submit(
-                self._mc.commands.send_advert(flood=flood),
-                timeout=10.0,
-            )
+            result = await self._mc.commands.send_advert(flood=flood)
             result_type = getattr(result, "type", None)
             if result_type == EventType.OK:
-                mode = "flood" if flood else "direct"
-                self._emit_log(f"Advert sent ({mode})", "ok")
+                mode = "flood" if flood else "local"
+                self._emit_log(f"Advert sent ({mode}, {source})", "ok")
                 return True
             self._emit_log(f"Advert failed: {result_type}", "err")
             return False
         except Exception as exc:
             self._emit_log(f"Advert error: {exc}", "err")
             return False
+
+    def send_advert(self, flood: bool = True) -> bool:
+        # Send one self-advert through the connected MeshCore companion.
+        if not self._loop or not self._loop.is_running():
+            self._emit_log("Advert failed: radio loop not running", "warn")
+            return False
+        try:
+            return self._submit(
+                self._send_advert_async(flood=flood, source="manual"),
+                timeout=10.0,
+            )
+        except Exception as exc:
+            self._emit_log(f"Advert error: {exc}", "err")
+            return False
+
+    async def _auto_advert_loop(self):
+        while self._online:
+            if not self.settings or not self.settings.get("auto_advert_enabled", False):
+                return
+            flood = bool(self.settings.get("auto_advert_flood", True))
+            await self._send_advert_async(flood=flood, source="auto")
+            await asyncio.sleep(self._auto_advert_interval_seconds())
 
     def _channel_send_coro(self, text: str):
         # Newer meshcore versions provide send_chan_msg(channel, text).

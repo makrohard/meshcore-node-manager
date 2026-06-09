@@ -25,6 +25,11 @@ _DEFAULTS: dict = {
     "auto_reconnect":      True,  # TCP only
     "reconnect_max":       10,
 
+    # adverts
+    "auto_advert_enabled":  False, # automatic adverts
+    "auto_advert_interval": 30,    # minutes
+    "auto_advert_flood":    True,  # flood advert through mesh
+
     # notifications
     "notify_dm":       True,      # desktop notification on incoming DM
     "notify_channel":  False,     # desktop notification on channel msg

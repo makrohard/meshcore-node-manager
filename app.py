@@ -844,11 +844,13 @@ class SettingsTab(TabBase):
             f.pack(fill="x", pady=6)
             return f
 
-        def check(parent, key, label):
+        def check(parent, key, label, command=None):
             var = tk.BooleanVar(value=self.settings.get(key, False))
             self._vars[key] = var
-            ttk.Checkbutton(parent, text=label, variable=var,
-                            command=self._save).pack(anchor="w", padx=10, pady=2)
+            cb = ttk.Checkbutton(parent, text=label, variable=var,
+                                 command=command or self._save)
+            cb.pack(anchor="w", padx=10, pady=2)
+            return cb
 
         def entry_row(parent, key, label, width=16):
             row = ttk.Frame(parent)
@@ -860,6 +862,7 @@ class SettingsTab(TabBase):
             e.pack(side="left")
             e.bind("<FocusOut>", lambda _: self._save())
             e.bind("<Return>",   lambda _: self._save())
+            return e
 
         # ── Notifications ──────────────────────────────────────────────────
         nf = section("Notifications")
@@ -876,6 +879,12 @@ class SettingsTab(TabBase):
         entry_row(cf, "auto_ping_interval", "Ping interval (seconds):", width=6)
         check(cf, "auto_reconnect", "Auto-reconnect TCP on disconnect")
         entry_row(cf, "reconnect_max", "Max reconnect attempts (0 = unlimited):", width=6)
+        check(cf, "auto_advert_enabled", "Auto-advert",
+              command=self._save_and_update_auto_advert_controls)
+        self._auto_advert_interval_entry = entry_row(
+            cf, "auto_advert_interval", "Advert interval (minutes):", width=6)
+        self._auto_advert_flood_cb = check(cf, "auto_advert_flood", "Flood adverts")
+        self._update_auto_advert_controls()
 
         # ── Session log ────────────────────────────────────────────────────
         sf = section("Session Log")
@@ -932,11 +941,27 @@ class SettingsTab(TabBase):
         self._status = ttk.Label(outer, foreground=C["ok"])
         self._status.pack()
 
+    def _save_and_update_auto_advert_controls(self):
+        self._save()
+        self._update_auto_advert_controls()
+
+    def _update_auto_advert_controls(self):
+        enabled = False
+        var = self._vars.get("auto_advert_enabled")
+        if var is not None:
+            enabled = bool(var.get())
+        state = "normal" if enabled else "disabled"
+        for attr in ("_auto_advert_interval_entry", "_auto_advert_flood_cb"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                widget.configure(state=state)
+
     def _save(self):
         for key, var in self._vars.items():
             raw = var.get()
             # Coerce int fields
-            if key in ("auto_ping_interval", "reconnect_max", "bridge_port"):
+            if key in ("auto_ping_interval", "reconnect_max", "bridge_port",
+                       "auto_advert_interval"):
                 try:
                     raw = int(raw)
                 except (ValueError, TypeError):
@@ -1240,8 +1265,14 @@ class AppWindow(tk.Tk):
         for w in ("TFrame", "TLabel", "TCheckbutton",
                   "TLabelframe", "TLabelframe.Label"):
             s.configure(w, background=C["bg"], foreground=C["fg"])
+        s.map("TCheckbutton",
+              background=[("active", C["bg"]), ("disabled", C["bg"])],
+              foreground=[("disabled", C["muted"]), ("active", C["fg"])])
         s.configure("TButton",   background=C["btn"], foreground=C["btn_fg"])
         s.configure("TEntry",    fieldbackground=C["entry"], foreground=C["fg"])
+        s.map("TEntry",
+              fieldbackground=[("disabled", C["bg2"]), ("active", C["entry"])],
+              foreground=[("disabled", C["muted"]), ("active", C["fg"])])
         s.configure("TCombobox", fieldbackground=C["entry"], foreground=C["fg"],
                      selectbackground=C["accent"])
         s.configure("TSeparator", background=C["border"])
