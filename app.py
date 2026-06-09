@@ -836,8 +836,54 @@ class SettingsTab(TabBase):
         self._build()
 
     def _build(self):
-        outer = ttk.Frame(self)
-        outer.pack(fill="both", expand=True, padx=16, pady=10)
+        canvas = tk.Canvas(self, bg=C["bg"], highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical",
+                                  command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        outer = ttk.Frame(canvas, padding=(16, 10))
+        window_id = canvas.create_window((0, 0), window=outer, anchor="nw")
+
+        def _update_scrollbar():
+            bbox = canvas.bbox("all")
+            canvas.configure(scrollregion=bbox)
+            content_h = bbox[3] - bbox[1] if bbox else 0
+            needed = content_h > canvas.winfo_height()
+            if needed and not scrollbar.winfo_ismapped():
+                scrollbar.pack(side="right", fill="y")
+            elif not needed and scrollbar.winfo_ismapped():
+                scrollbar.pack_forget()
+
+        def _sync_scrollregion(_event=None):
+            _update_scrollbar()
+
+        def _sync_width(event):
+            canvas.itemconfigure(window_id, width=event.width)
+            _update_scrollbar()
+
+        def _on_mousewheel(event):
+            if event.delta:
+                canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        def _bind_mousewheel(_event=None):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Button-4>",
+                            lambda _e: canvas.yview_scroll(-1, "units"))
+            canvas.bind_all("<Button-5>",
+                            lambda _e: canvas.yview_scroll(1, "units"))
+
+        def _unbind_mousewheel(_event=None):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
+        outer.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", _sync_width)
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
 
         def section(title):
             f = ttk.LabelFrame(outer, text=f" {title} ")
