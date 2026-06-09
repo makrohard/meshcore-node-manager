@@ -1,2 +1,3 @@
 - Add manual MeshCore advert button.
 - Add advert settings.
+- Fix subscription token cleanup.

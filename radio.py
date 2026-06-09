@@ -291,10 +291,10 @@ class NodeRadio:
             )
 
             try:
-                self._sub_tokens = [
-                    self._mc.subscribe(event_type, self._on_mc_event)
-                    for event_type in event_types
-                ]
+                for event_type in event_types:
+                    self._sub_tokens.append(
+                        self._mc.subscribe(event_type, self._on_mc_event)
+                    )
                 return
             except TypeError:
                 for sub_token in self._sub_tokens:
