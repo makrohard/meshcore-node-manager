@@ -951,10 +951,9 @@ class SettingsTab(TabBase):
         if var is not None:
             enabled = bool(var.get())
         state = "normal" if enabled else "disabled"
-        for attr in ("_auto_advert_interval_entry", "_auto_advert_flood_cb"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                widget.configure(state=state)
+        widget = getattr(self, "_auto_advert_flood_cb", None)
+        if widget is not None:
+            widget.configure(state=state)
 
     def _save(self):
         for key, var in self._vars.items():
