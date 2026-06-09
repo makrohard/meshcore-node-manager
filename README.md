@@ -46,7 +46,7 @@ Range is typically **2–15 km line of sight** depending on hardware and antenna
 
 | Category | Feature |
 |---|---|
-| **Connections** | USB serial, TCP/WiFi (port 4403), Bluetooth BLE |
+| **Connections** | USB serial, TCP/WiFi (port 4403), LoRaHAM companion TCP, Bluetooth BLE |
 | **BLE scanner** | Scans 5 seconds; MeshCore nodes highlighted green; double-click to connect |
 | **📡 Contacts tab** | Live table, filter, click-to-sort columns, recency colour, SNR/RSSI, battery %, GPS |
 | **💬 Channel tab** | Send and receive public LoRa broadcast messages |
@@ -55,6 +55,7 @@ Range is typically **2–15 km line of sight** depending on hardware and antenna
 | **📻 Radio tab** | Frequency, BW, SF, CR, TX power; live device stats (firmware-dependent) |
 | **📋 Log tab** | Colour-coded application log; save to file |
 | **228-char guard** | Live character counter on both send fields; warning if LoRa limit exceeded |
+| **Advert** | Send one MeshCore self-advert; optional auto-advert in Settings |
 | **Ping** | Re-query device to confirm connection is alive (useful after serial idle timeout) |
 | **Backup** | Save device info + radio params to JSON |
 | **Load backup** | Load and display a saved JSON backup |
@@ -64,7 +65,7 @@ Range is typically **2–15 km line of sight** depending on hardware and antenna
 | **Clean shutdown** | Graceful disconnect and loop teardown on window close |
 | **⟷ Bridge tab** | Connect geographically separate networks over the internet |
 | **⬡ NEXUS dashboard** | Animated real-time analytics HUD — radar, health orb, RTT sparkline, hop topology, signal waterfall |
-| **⚙ Settings tab** | Persistent preferences: notifications, auto-ping, auto-reconnect, BLE PIN, bridge, session log |
+| **⚙ Settings tab** | Persistent preferences: notifications, auto-ping, auto-reconnect, adverts, BLE PIN, bridge, session log |
 | **Session log** | Auto-saves every session to `~/.meshcore_nm/sessions/` |
 | **Contact notes** | Per-contact private annotations stored locally |
 | **Contact favourites** | Star contacts; float to top; persisted between sessions |
@@ -257,6 +258,19 @@ python -m venv venv && venv\Scripts\activate && pip install meshcore bleak && py
 
 TCP is the most reliable transport for desktop use: it has no idle timeout
 and works over a LAN or port-forwarded internet connection.
+
+### LoRaHAM companion TCP
+
+When using `meshcore-pi` with the LoRaHAM daemon, connect to the companion
+TCP server:
+
+1. Start the LoRaHAM daemon and the `meshcore-pi` LoRaHAM companion
+2. Click **🌐 TCP**
+3. Host: `127.0.0.1`
+4. Port: `5000`
+
+Click **📣 Advert** once if another MeshCore node does not yet know this node.
+For unattended use, enable **⚙ Settings → Connection → Auto-advert**.
 
 ### 🔌 Serial (USB)
 
@@ -473,6 +487,7 @@ instance just needs:
 | **🔵 BLE** | Open BLE scanner; connect via Bluetooth |
 | **⏹ Disconnect** | Graceful disconnect; releases all resources |
 | **🔄 Contacts** | Reload full contact list from device |
+| **📣 Advert** | Send one self-advert so other MeshCore nodes can learn this node |
 | **📡 Ping** | Re-query device info to confirm the connection is alive |
 | **💾 Backup** | Save device info + radio params to a JSON file |
 | **📂 Load Backup** | Open a JSON backup and display its contents |
@@ -528,6 +543,7 @@ application. It works on dt267 v1.13+ and meshcomod firmware. If you see
 | Serial "Permission denied" on Linux | `sudo usermod -aG dialout $USER` then log out and back in |
 | Serial disconnects after ~30 s | dt267 serial idle timeout; click **📡 Ping** or switch to TCP |
 | "Contact not found" when sending DM | Click **🔄 Contacts** to refresh; check name spelling (case-insensitive) |
+| Other node cannot DM this node | Click **📣 Advert** once so it can learn this node |
 | "Broadcast failed — firmware may not support…" | Upgrade to dt267 v1.13+ or meshcomod |
 | Live stats show no data | Requires dt267 v1.13+ or meshcomod with stats support |
 | Black screen on V4 after flashing | Flash the non-merged `.bin` at offset `0x10000` if the device already has a valid bootloader |
