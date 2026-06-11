@@ -959,6 +959,8 @@ class SettingsTab(TabBase):
               "Enable bridge (requires restart of bridge after saving)")
         check(brf, "bridge_server_enabled",
               "Run as bridge server (others can connect to you)")
+        entry_row(brf, "bridge_host",
+                  "Server listen host:", width=16)
         entry_row(brf, "bridge_port",
                   "Server port (default 4404):", width=8)
         ttk.Label(brf,
@@ -981,7 +983,7 @@ class SettingsTab(TabBase):
               "Inject bridged messages onto local LoRa channel")
         ttk.Label(brf,
                   text=("  Security: shared secret is stored in plaintext.\n"
-                        "  For sensitive use, run behind a VPN (WireGuard/Tailscale)."),
+                        "  Listen host defaults to 127.0.0.1. Use 0.0.0.0 only behind a firewall/VPN."),
                   foreground=C["muted"], font=("", 8)
                   ).pack(anchor="w", padx=10, pady=(2, 6))
 

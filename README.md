@@ -474,6 +474,9 @@ instance just needs:
 2. Peers box: `wss://yourdomain.com/hub`
 3. Enter shared secret → 💾 Save
 
+Bridge server mode listens on `127.0.0.1` by default. Set the listen host to
+`0.0.0.0` only when intentionally exposing it to a LAN/VPN/firewall rule.
+
 ---
 
 ## Toolbar reference

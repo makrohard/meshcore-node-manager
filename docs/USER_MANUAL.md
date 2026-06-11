@@ -1361,6 +1361,7 @@ any distance.
 - Channel messages are bridged; **direct messages are never bridged**
 - Remote contacts appear with a ⟷ prefix to distinguish them from local ones
 - Bridged channel messages show `[ORIGIN-NODE]` to identify their source network
+- Bridge server mode listens on `127.0.0.1` by default; `0.0.0.0` is an explicit exposure opt-in
 
 ---
 
@@ -1394,9 +1395,12 @@ publicly reachable IP address (or can port-forward).
 1. Open ⚙ Settings → Bridge Network
 2. Tick **Enable bridge**
 3. Tick **Run as bridge server**
-4. Set port (default 4404) — open this port in your firewall / router
-5. Set a shared secret (e.g. `openssl rand -hex 16`)
-6. Click 💾 Save settings
+4. Set listen host to `0.0.0.0` only if remote peers must connect directly
+   from another machine; keep `127.0.0.1` for local reverse-proxy/VPN setups
+5. Set port (default 4404) — open this port in your firewall / router only
+   when intentionally exposing the bridge
+6. Set a shared secret (e.g. `openssl rand -hex 16`)
+7. Click 💾 Save settings
 
 **Location B — the client side**
 

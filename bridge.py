@@ -275,20 +275,21 @@ class Bridge:
     # ── WebSocket server ──────────────────────────────────────────────────────
 
     async def _run_server(self):
+        host   = self._settings.get("bridge_host", "127.0.0.1") or "127.0.0.1"
         port   = self._settings.get("bridge_port", BRIDGE_DEFAULT_PORT)
         secret = self._settings.get("bridge_secret", "")
-        self._log(f"Bridge server listening on port {port}", "ok")
+        self._log(f"Bridge server listening on {host}:{port}", "ok")
 
         try:
             async with websockets.server.serve(  # pylint: disable=no-member
                 lambda ws: self._handle_peer(ws, secret, _is_server_side=True),
-                host="0.0.0.0",
+                host=host,
                 port=port,
                 max_size=MAX_FRAME_BYTES,
             ):
                 await asyncio.Future()   # run until cancelled
         except OSError as exc:
-            self._log(f"Bridge server failed to bind port {port}: {exc}", "err")
+            self._log(f"Bridge server failed to bind {host}:{port}: {exc}", "err")
         except Exception as exc:
             self._log(f"Bridge server error: {exc}", "err")
 

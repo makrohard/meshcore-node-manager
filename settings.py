@@ -45,6 +45,7 @@ _DEFAULTS: dict = {
     # bridge (all off by default)
     "bridge_enabled":        False,  # master switch
     "bridge_server_enabled": False,  # run a WebSocket server
+    "bridge_host":           "127.0.0.1", # server listen host
     "bridge_port":           4404,   # server listen port
     "bridge_peers":          [],     # list of ws://host:port URIs to connect to
     "bridge_secret":         "",     # shared secret (empty = no auth)
