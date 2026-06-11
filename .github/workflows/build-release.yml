@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install meshcore bleak websockets pyinstaller
+          python -m pip install -r requirements.txt "pyinstaller>=6.0"
 
       - name: Build EXE
         run: |
@@ -79,7 +79,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install meshcore bleak websockets pyinstaller
+          python -m pip install -r requirements.txt "pyinstaller>=6.0"
 
       - name: Build Linux binary
         run: |
@@ -228,7 +228,7 @@ jobs:
 
           ### Source
 
-          To run from source instead: `pip install meshcore bleak && python main.py`
+          To run from source instead: `pip install -r requirements.txt && python main.py`
           NOTES
 
       - name: Create GitHub Release

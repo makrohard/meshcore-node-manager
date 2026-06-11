@@ -161,17 +161,15 @@ USB + BLE + TCP multi-transport support:
   - Windows: included in the official Python installer
 
 ```bash
-pip install meshcore bleak websockets
-
-# Optional — desktop notifications and richer cross-platform alerts
-pip install plyer
+pip install -r requirements.txt
 ```
 
 | Package | Purpose | Min version |
 |---|---|---|
-| `meshcore` | Official MeshCore Python companion library | latest |
-| `bleak` | Cross-platform Bluetooth Low Energy | 0.21+ |
+| `meshcore` | Official MeshCore Python companion library | 0.4.1+ |
+| `bleak` | Cross-platform Bluetooth Low Energy | 0.22+ |
 | `websockets` | Bridge and hub networking | 13.0+ |
+| `plyer` | Desktop notifications (optional at runtime) | 2.1+ |
 
 ### BLE platform notes
 
@@ -190,7 +188,7 @@ pip install plyer
 ```bash
 git clone https://github.com/2E0LXY/meshcore-node-manager.git
 cd meshcore-node-manager
-pip install meshcore bleak
+pip install -r requirements.txt
 python main.py
 ```
 
@@ -209,14 +207,14 @@ venv\Scripts\activate
 # macOS / Linux
 source venv/bin/activate
 
-pip install meshcore bleak
+pip install -r requirements.txt
 python main.py
 ```
 
 ### Option C — Windows one-liner (in the repo directory)
 
 ```bat
-python -m venv venv && venv\Scripts\activate && pip install meshcore bleak && python main.py
+python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt && python main.py
 ```
 
 ---
@@ -225,7 +223,7 @@ python -m venv venv && venv\Scripts\activate && pip install meshcore bleak && py
 
 1. Flash your Heltec V3 / V4 with dt267 firmware (see
    [recommended firmware](#recommended-firmware))
-2. `pip install meshcore bleak websockets`
+2. `pip install -r requirements.txt`
 3. `python main.py`
 4. Click **🔵 BLE** → **🔍 Scan (5 s)** → double-click your node (green row)
 5. The **📡 Contacts** tab populates; the **💬 Channel** tab shows live traffic

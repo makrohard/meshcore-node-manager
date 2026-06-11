@@ -9,13 +9,15 @@ TCP_DEFAULT_PORT    = 4403
 SERIAL_BAUD         = 115200        # informational; meshcore library handles baud
 BLE_SCAN_SECONDS    = 5.0
 ACK_TIMEOUT_SECS    = 30
-HISTORY_LIMIT       = 500
+HISTORY_LIMIT       = 500           # default rows returned to the UI
+HISTORY_STORE_LIMIT = 5000          # maximum messages kept in memory
 LORA_MAX_CHARS      = 228           # practical LoRa payload limit for text frames
 
 # ── bridge ───────────────────────────────────────────────────────────────────
 BRIDGE_DEFAULT_PORT  = 4404      # WebSocket port for bridge server
 BRIDGE_MAX_HOPS      = 3         # max bridge relay hops before drop
 BRIDGE_DEDUP_TTL     = 300       # seconds to remember seen message IDs
+BRIDGE_CONTACT_RELAY_INTERVAL = 60  # seconds between contact telemetry relays
 
 # ── auto-ping / reconnect ─────────────────────────────────────────────────────
 AUTO_PING_INTERVAL  = 20            # seconds between keepalive pings on Serial

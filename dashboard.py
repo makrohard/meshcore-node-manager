@@ -112,8 +112,10 @@ class _Panel(tk.Canvas):
     def __init__(self, parent, w, h, **kw):
         super().__init__(parent, width=w, height=h,
                          bg=N["void"], highlightthickness=0, **kw)
-        self._w = w
-        self._h = h
+        # Do not assign to self._w: tkinter.Widget uses that internally
+        # for the Tcl widget path name. Overwriting it breaks geometry managers.
+        self._canvas_width = w
+        self._canvas_height = h
         self._t = 0.0          # animation time in seconds
         self._running = False
         self.bind("<Destroy>", lambda _: self._stop())
@@ -870,6 +872,9 @@ class NexusDashboard(tk.Toplevel):
         self._radio = radio
         self._panels: list[_Panel] = []
         self._data_refresh_ms = 2000
+        self._closing = False
+        self._clock_after_id = None
+        self._data_after_id = None
 
         self._build()
         self._start_all()
@@ -978,17 +983,30 @@ class NexusDashboard(tk.Toplevel):
         for p in self._panels:
             p.start()
 
+    def _is_alive(self) -> bool:
+        try:
+            return (not self._closing) and bool(self.winfo_exists())
+        except tk.TclError:
+            return False
+
     def _tick_clock(self):
+        if not self._is_alive():
+            return
         self._clock_var.set(time.strftime("⬡ %Y-%m-%d  %H:%M:%S"))
-        self.after(1000, self._tick_clock)
+        self._clock_after_id = self.after(1000, self._tick_clock)
 
     # ── data pipeline ─────────────────────────────────────────────────────────
 
     def _schedule_data(self):
+        if not self._is_alive():
+            return
         self._refresh_data()
-        self.after(self._data_refresh_ms, self._schedule_data)
+        if self._is_alive():
+            self._data_after_id = self.after(self._data_refresh_ms, self._schedule_data)
 
     def _refresh_data(self):
+        if not self._is_alive():
+            return
         if self._radio is None:
             self._status_var.set("◉  NO RADIO — DEMO MODE")
             self._inject_demo_data()
@@ -1088,6 +1106,15 @@ class NexusDashboard(tk.Toplevel):
         self._node_var.set("NODE: DEMO")
 
     def _on_close(self):
+        self._closing = True
+        for after_id in (self._clock_after_id, self._data_after_id):
+            if after_id is None:
+                continue
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        self._clock_after_id = self._data_after_id = None
         for p in self._panels:
             p._running = False  # pylint: disable=protected-access
         self.destroy()

@@ -1,3 +1,5 @@
 - Add manual MeshCore advert button.
 - Add advert settings.
 - Fix subscription token cleanup.
+- Fix dependency manifest, bounded message history, NEXUS close callbacks, thread-safe IDs, reachable contact relay/NEXUS UI, and bridge loop guard.
+- Fix NEXUS dashboard Tk widget path collision in animated panels.

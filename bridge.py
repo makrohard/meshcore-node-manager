@@ -80,6 +80,7 @@ DEDUP_TTL_SECS       = 300      # 5 minutes
 PING_INTERVAL_SECS   = 30
 RECONNECT_DELAY_SECS = 15
 MAX_FRAME_BYTES      = 65_536   # 64 KB max incoming frame
+BRIDGE_TEXT_PREFIX   = "⟷"      # marks bridge-injected LoRa text
 
 
 class FrameType(str, Enum):
@@ -482,9 +483,10 @@ class Bridge:
         inject = self._settings.get("bridge_inject_radio", True)
         if inject and self._radio and self._radio.online:
             try:
-                self._radio.transmit_channel(f"[{origin}] {sender}: {text}")
-            except Exception:
-                pass
+                self._radio.transmit_channel(
+                    f"{BRIDGE_TEXT_PREFIX}[{origin}] {sender}: {text}")
+            except Exception as exc:
+                self._log(f"Bridge radio inject failed: {exc}", "debug")
 
     async def _inject_contact(self, payload: dict) -> None:
         """
@@ -532,11 +534,12 @@ class Bridge:
             return
         # Don't bridge messages that came from another bridge instance
         sender = kw.get("sender", "")
-        if sender.startswith("⟷"):
+        text = kw.get("text", "")
+        if sender.startswith(BRIDGE_TEXT_PREFIX) or text.startswith(BRIDGE_TEXT_PREFIX):
             return
         payload = {
             "sender": sender,
-            "text":   kw.get("text", ""),
+            "text":   text,
             "ts":     kw.get("ts", time.time()),
         }
         self._broadcast_async(FrameType.CHANNEL_MSG, payload)

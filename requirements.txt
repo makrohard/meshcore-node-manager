@@ -1,0 +1,8 @@
+# Runtime dependencies for MeshCore Node Manager.
+# Keep this file as the single source of truth for app dependencies.
+meshcore>=0.4.1
+bleak>=0.22
+websockets>=13.0,<17.0
+
+# Optional at runtime, but installed by default for full desktop notifications.
+plyer>=2.1

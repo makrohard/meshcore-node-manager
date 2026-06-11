@@ -31,10 +31,11 @@ import json
 import os
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 from config import (
-    ACK_TIMEOUT_SECS, BLE_SCAN_SECONDS, HISTORY_LIMIT,
+    ACK_TIMEOUT_SECS, BLE_SCAN_SECONDS, HISTORY_LIMIT, HISTORY_STORE_LIMIT,
     NOTES_FILE, SESSION_LOG_DIR,
     AUTO_PING_INTERVAL, RECONNECT_MAX,
 )
@@ -132,7 +133,8 @@ class NodeRadio:
 
         # message store
         self._msg_lock  = threading.Lock()
-        self._history:  list[Message]      = []
+        self._id_lock   = threading.Lock()
+        self._history:  deque[Message]     = deque(maxlen=HISTORY_STORE_LIMIT)
         self._pending:  dict[int, Message] = {}
         self._id_ctr    = 0
 
@@ -740,8 +742,9 @@ class NodeRadio:
         return self._mc.commands.send_msg(None, text)
 
     def _next_id(self) -> int:
-        self._id_ctr += 1
-        return (int(time.time() * 1000) + self._id_ctr) & 0xFFFF_FFFF
+        with self._id_lock:
+            self._id_ctr += 1
+            return (int(time.time() * 1000) + self._id_ctr) & 0xFFFF_FFFF
 
     def transmit_channel(self, text: str) -> "int | None":
         if not self._online or not self._mc or not text.strip():

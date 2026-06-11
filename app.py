@@ -4,12 +4,17 @@ MeshCore Node Manager  |  Original work
 """
 
 import os
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from config import C, LOG_COLOURS, TCP_DEFAULT_PORT, SESSION_LOG_DIR, RECONNECT_DELAY
+from config import (
+    C, LOG_COLOURS, TCP_DEFAULT_PORT, SESSION_LOG_DIR, RECONNECT_DELAY,
+    BRIDGE_CONTACT_RELAY_INTERVAL,
+)
 from events import (
     EventBus,
     EV_CONNECTED, EV_DISCONNECTED, EV_RECONNECTING, EV_CONN_ERROR,
@@ -386,9 +391,6 @@ class DirectTab(TabBase):
 
     def update_dest_list(self):
         """Refresh the To: and View: dropdowns with known contact names."""
-        names = self.radio.get_contact_names()
-        self._dcb["values"] = names
-        self._pcb["values"] = ["All"] + names
         names = self.radio.get_contact_names()
         self._dcb["values"] = names
         self._pcb["values"] = ["All"] + names
@@ -1025,7 +1027,6 @@ class SettingsTab(TabBase):
             self._status.config(text="❌ Save failed")
 
     def _open_log_folder(self):
-        import subprocess, sys
         try:
             if sys.platform == "win32":
                 os.startfile(SESSION_LOG_DIR)
@@ -1267,6 +1268,8 @@ class AppWindow(tk.Tk):
         # reconnect state
         self._reconnect_pending  = False
         self._reconnect_due_time = 0.0
+        self._tick_after_id = None
+        self._bridge_contacts_due_time = 0.0
 
         self._apply_style()
         self._build_toolbar()
@@ -1357,6 +1360,7 @@ class AppWindow(tk.Tk):
         btn("💾 Backup",      self._do_backup)
         btn("📂 Load Backup", self._do_load_backup)
         btn("📝 Export Msgs", self._do_export)
+        btn("📊 NEXUS",      self._do_nexus)
         tk.Frame(bar, bg=C["bg2"]).pack(side="left", expand=True, fill="x")
         btn("ℹ Info",         self._do_info)
 
@@ -1612,26 +1616,44 @@ class AppWindow(tk.Tk):
 
     def _tick(self):
         try:
+            now = time.time()
             if self._radio.online:
                 self._radio.sweep_timeouts()
             elif (self._reconnect_pending and
-                  time.time() >= self._reconnect_due_time):
-                self._reconnect_due_time = time.time() + RECONNECT_DELAY
+                  now >= self._reconnect_due_time):
+                self._reconnect_due_time = now + RECONNECT_DELAY
                 threading.Thread(target=self._radio.try_reconnect,
                                  daemon=True).start()
+            self._relay_bridge_contacts_if_due(now)
             self._update_statusbar()
-        except Exception:
-            pass
-        self.after(5000, self._tick)
+        except Exception as exc:
+            self._bus.emit(EV_LOG, text=f"Tick error: {exc}", level="debug")
+        self._tick_after_id = self.after(5000, self._tick)
+
+    def _relay_bridge_contacts_if_due(self, now: float):
+        if now < self._bridge_contacts_due_time:
+            return
+        self._bridge_contacts_due_time = now + BRIDGE_CONTACT_RELAY_INTERVAL
+        if not (self._bridge.is_running and
+                self._settings.get("bridge_relay_contacts", True)):
+            return
+        for contact in self._radio.get_contacts():
+            self._bridge.broadcast_contact(contact)
 
     # ── close ─────────────────────────────────────────────────────────────────
 
     def _on_close(self):
+        if self._tick_after_id is not None:
+            try:
+                self.after_cancel(self._tick_after_id)
+            except tk.TclError:
+                pass
+            self._tick_after_id = None
         try:
             self._settings.set("window_geometry", self.geometry())
             self._settings.save()
-        except Exception:
-            pass
+        except Exception as exc:
+            self._bus.emit(EV_LOG, text=f"Settings save on close failed: {exc}", level="debug")
         if self._bridge.is_running:
             self._bridge.stop()
         if self._radio.online:
