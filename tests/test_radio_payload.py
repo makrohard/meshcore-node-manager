@@ -1,7 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from radio import NodeRadio
+from events import EventBus
+from radio import Contact, NodeRadio
 
 
 class NodeRadioPayloadTests(unittest.TestCase):
@@ -43,6 +44,38 @@ class NodeRadioPayloadTests(unittest.TestCase):
             NodeRadio._split_payload(payload),
             ("CHEMobile", "Hello world!", 1),
         )
+
+
+    def test_received_direct_payload_resolves_pubkey_prefix_from_contacts(self):
+        radio = NodeRadio(EventBus())
+        radio.upsert_contact(Contact(
+            key="abcdef1234567890",
+            name="CHEMobile",
+            raw={"public_key": "abcdef1234567890fedcba"},
+        ))
+
+        self.assertEqual(
+            radio._split_received_payload({
+                "type": "PRIV",
+                "pubkey_prefix": "abcdef123456",
+                "text": "message",
+                "hops": 3,
+            }),
+            ("CHEMobile", "message", 3),
+        )
+
+    def test_received_direct_payload_falls_back_to_pubkey_prefix(self):
+        radio = NodeRadio(EventBus())
+
+        self.assertEqual(
+            radio._split_received_payload({
+                "type": "PRIV",
+                "pubkey_prefix": "abcdef123456",
+                "text": "message",
+            }),
+            ("abcdef123456", "message", None),
+        )
+
 
 
 if __name__ == "__main__":

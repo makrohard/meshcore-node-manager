@@ -880,8 +880,84 @@ class NodeRadio:
         except Exception as exc:
             self._emit_log(f"Event handler error: {exc}", "err")
 
-    def _rx_channel(self, payload):
+    def _split_received_payload(self, payload) -> "tuple[str, str, int | None]":
+        """Return (sender, text, hops), resolving MeshCore pubkey prefixes."""
         sender, text, hops = self._split_payload(payload)
+        if sender != "?":
+            return sender, text, hops
+        resolved = self._resolve_payload_sender(payload)
+        if resolved != "?":
+            return resolved, text, hops
+        return sender, text, hops
+
+    def _resolve_payload_sender(self, payload) -> str:
+        for key in ("sender_prefix", "sender", "from_name", "sender_name",
+                    "name", "adv_name"):
+            value = self._payload_get(payload, key)
+            if value:
+                return str(value)
+
+        pubkey_prefix = self._payload_get(payload, "pubkey_prefix")
+        if pubkey_prefix:
+            contact_name = self._contact_name_for_prefix(pubkey_prefix)
+            if contact_name:
+                return contact_name
+            prefix = self._normalise_pubkeyish(pubkey_prefix)
+            if prefix:
+                return pubkey_short(prefix)
+
+        return "?"
+
+    @staticmethod
+    def _payload_get(payload, key: str, default=None):
+        if isinstance(payload, dict):
+            return payload.get(key, default)
+        return getattr(payload, key, default)
+
+    @staticmethod
+    def _normalise_pubkeyish(value) -> "str | None":
+        if value is None:
+            return None
+        if isinstance(value, (bytes, bytearray)):
+            text = value.hex()
+        else:
+            text = str(value)
+        text = text.strip().lower().replace(":", "").replace(" ", "")
+        return text if text else None
+
+    def _contact_name_for_prefix(self, pubkey_prefix) -> "str | None":
+        prefix = self._normalise_pubkeyish(pubkey_prefix)
+        if not prefix:
+            return None
+
+        with self._ct_lock:
+            contacts = list(self._contacts.values())
+
+        for contact in contacts:
+            candidates = [contact.key]
+            raw = contact.raw
+            if isinstance(raw, dict):
+                candidates.extend(
+                    raw.get(key) for key in
+                    ("public_key", "pubkey", "key", "pubkey_prefix")
+                )
+            elif raw is not None:
+                candidates.extend(
+                    getattr(raw, key, None) for key in
+                    ("public_key", "pubkey", "key", "pubkey_prefix")
+                )
+
+            for candidate in candidates:
+                candidate_key = self._normalise_pubkeyish(candidate)
+                if not candidate_key or candidate_key == "?":
+                    continue
+                if candidate_key.startswith(prefix) or prefix.startswith(candidate_key):
+                    return contact.name or contact.key
+
+        return None
+
+    def _rx_channel(self, payload):
+        sender, text, hops = self._split_received_payload(payload)
         if not text:
             return
         now = time.time()
@@ -897,7 +973,7 @@ class NodeRadio:
         self._bus.emit(EV_UNREAD_CHANGE, direct=ud, channel=uc)
 
     def _rx_direct(self, payload):
-        sender, text, hops = self._split_payload(payload)
+        sender, text, hops = self._split_received_payload(payload)
         if not text:
             return
         now = time.time()
