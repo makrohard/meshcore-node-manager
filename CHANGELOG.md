@@ -4,3 +4,4 @@
 - Fix dependency manifest, bounded message history, NEXUS close callbacks, thread-safe IDs, reachable contact relay/NEXUS UI, and bridge loop guard.
 - Fix NEXUS dashboard Tk widget path collision in animated panels.
 - Default bridge server listen host to localhost and document explicit exposure via 0.0.0.0.
+- Correlate ACK events with MeshCore expected_ack codes before falling back to timing heuristics.

@@ -98,6 +98,7 @@ class Message:
     rtt:           float | None = None
     hops:          int   | None = None    # hop count from packet metadata
     status:        str = "unknown"        # always set explicitly at construction
+    expected_ack:  str | None = None      # MeshCore ACK correlation code
 
 
 # ── NodeRadio ─────────────────────────────────────────────────────────────────
@@ -741,6 +742,44 @@ class NodeRadio:
 
         return self._mc.commands.send_msg(None, text)
 
+    @staticmethod
+    def _normalise_ack_code(value) -> "str | None":
+        if value is None:
+            return None
+        if isinstance(value, memoryview):
+            value = value.tobytes()
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value).hex()
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        if text.startswith("0x"):
+            text = text[2:]
+        for sep in (":", "-", " "):
+            text = text.replace(sep, "")
+        return text or None
+
+    @classmethod
+    def _event_ack_code(cls, event_or_payload) -> "str | None":
+        attrs = getattr(event_or_payload, "attributes", None)
+        if isinstance(attrs, dict):
+            for key in ("code", "ack", "ack_code", "expected_ack"):
+                code = cls._normalise_ack_code(attrs.get(key))
+                if code:
+                    return code
+
+        payload = getattr(event_or_payload, "payload", event_or_payload)
+        if isinstance(payload, dict):
+            for key in ("expected_ack", "code", "ack", "ack_code"):
+                code = cls._normalise_ack_code(payload.get(key))
+                if code:
+                    return code
+            return None
+
+        if isinstance(payload, (bytes, bytearray, memoryview, str)):
+            return cls._normalise_ack_code(payload)
+        return None
+
     def _next_id(self) -> int:
         with self._id_lock:
             self._id_ctr += 1
@@ -782,11 +821,17 @@ class NodeRadio:
             return None
         lid = self._next_id()
         try:
-            self._submit(self._mc.commands.send_msg(raw, text))
+            result = self._submit(self._mc.commands.send_msg(raw, text))
+            result_type = getattr(result, "type", None)
+            if EventType is not None and result_type == EventType.ERROR:
+                self._emit_log(f"DM failed: {getattr(result, 'payload', '')}", "err")
+                return None
+            expected_ack = self._event_ack_code(result)
             msg = Message(local_id=lid, direction="tx", kind="direct",
                           peer=dest, text=text,
                           ts_sent=time.time(),
-                          status="pending" if ack else "sent")
+                          status="pending" if ack else "sent",
+                          expected_ack=expected_ack)
             with self._msg_lock:
                 self._history.append(msg)
                 if ack:
@@ -829,9 +874,9 @@ class NodeRadio:
             elif et == EventType.CHANNEL_MSG_RECV:
                 self._rx_channel(pl)
             elif et == EventType.MSG_SENT:
-                self._advance_pending(pl)
+                self._advance_pending(event)
             elif et == EventType.ACK:
-                self._confirm_delivery(pl)
+                self._confirm_delivery(event)
         except Exception as exc:
             self._emit_log(f"Event handler error: {exc}", "err")
 
@@ -867,14 +912,43 @@ class NodeRadio:
         self._bus.emit(EV_MSG_DIRECT, sender=sender, text=text, ts=now, hops=hops)
         self._bus.emit(EV_UNREAD_CHANGE, direct=ud, channel=uc)
 
-    def _advance_pending(self, _payload):
+    def _advance_pending(self, event_or_payload):
+        ack_code = self._event_ack_code(event_or_payload)
         with self._msg_lock:
+            if ack_code:
+                for msg in self._pending.values():
+                    if msg.expected_ack == ack_code and msg.status == "pending":
+                        msg.status = "sent"
+                        return
+                return
             for msg in self._pending.values():
                 if msg.status == "pending":
                     msg.status = "sent"
                     break
 
-    def _confirm_delivery(self, _payload):
+    def _confirm_delivery(self, event_or_payload):
+        ack_code = self._event_ack_code(event_or_payload)
+        if ack_code:
+            matched_lid = None
+            with self._msg_lock:
+                coded_pending = any(msg.expected_ack for msg in self._pending.values())
+                for lid, msg in self._pending.items():
+                    if msg.expected_ack == ack_code:
+                        matched_lid = lid
+                        break
+            if matched_lid is not None:
+                self._finalise_delivery(matched_lid)
+                return
+            if coded_pending:
+                self._emit_log(
+                    f"ACK ignored: no pending message for code={ack_code[:8]}",
+                    "warn",
+                )
+                return
+
+        # Compatibility fallback for older meshcore APIs that do not expose
+        # ACK correlation codes. Prefer messages already marked sent, then the
+        # newest still-valid pending message, matching the previous behaviour.
         now  = time.time()
         best = None
         best_diff = float("inf")
@@ -886,9 +960,7 @@ class NodeRadio:
                 is_sent = msg.status == "sent"
                 if diff > ACK_TIMEOUT_SECS + 5:
                     continue
-                if best is None or \
-                   (is_sent and self._pending[best].status != "sent") or \
-                   (is_sent == (self._pending[best].status == "sent") and diff < best_diff):
+                if best is None or                    (is_sent and self._pending[best].status != "sent") or                    (is_sent == (self._pending[best].status == "sent") and diff < best_diff):
                     best, best_diff = lid, diff
         if best is not None:
             self._finalise_delivery(best)
