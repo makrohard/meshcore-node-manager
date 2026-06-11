@@ -1083,16 +1083,38 @@ class NodeRadio:
     # ── internals ─────────────────────────────────────────────────────────────
 
     @staticmethod
+    def _split_sender_text(text: str) -> "tuple[str, str]":
+        sender, sep, body = text.partition(": ")
+        if sep and sender and body:
+            return sender, body
+        return "?", text
+
+    @staticmethod
     def _split_payload(payload) -> "tuple[str, str, int | None]":
         """Return (sender, text, hops) from a received event payload."""
         if isinstance(payload, dict):
-            sender = payload.get("sender_prefix", payload.get("sender", "?"))
+            sender = payload.get("sender_prefix") or payload.get("sender") or "?"
             text   = payload.get("text", "")
             hops   = payload.get("hops")
         else:
-            sender = "?"
-            text   = str(payload) if payload else ""
-            hops   = None
+            sender = (
+                getattr(payload, "sender_prefix", None)
+                or getattr(payload, "sender", None)
+                or "?"
+            )
+            text = getattr(payload, "text", None)
+            hops = getattr(payload, "hops", None)
+            if text is None:
+                text = str(payload) if payload else ""
+
+        text = str(text) if text is not None else ""
+        sender = str(sender) if sender else "?"
+
+        if sender == "?":
+            parsed_sender, parsed_text = NodeRadio._split_sender_text(text)
+            if parsed_sender != "?":
+                return parsed_sender, parsed_text, hops
+
         return sender, text, hops
 
     def _emit_log(self, text: str, level: str = "info"):
