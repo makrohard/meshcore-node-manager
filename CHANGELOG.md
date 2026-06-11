@@ -5,3 +5,4 @@
 - Fix NEXUS dashboard Tk widget path collision in animated panels.
 - Default bridge server listen host to localhost and document explicit exposure via 0.0.0.0.
 - Correlate ACK events with MeshCore expected_ack codes before falling back to timing heuristics.
+- Add branch/PR CI for dependency installation, syntax checks, and unit tests across Python 3.10, 3.12, and 3.13.
