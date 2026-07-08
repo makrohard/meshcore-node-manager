@@ -67,6 +67,11 @@ except ImportError:
     _BLE_OK = False
 
 
+# Coalesce advert/path-update bursts (re-floods, periodic re-adverts) into a single
+# contact re-fetch this many seconds after the last such event.
+_CONTACT_REFRESH_DEBOUNCE = 1.5
+
+
 # ── data classes ─────────────────────────────────────────────────────────────
 
 @dataclass
@@ -123,6 +128,9 @@ class NodeRadio:
         # contacts
         self._contacts: dict[str, Contact] = {}
         self._ct_lock = threading.Lock()
+        # advert-driven contact refresh (debounced; runs on the radio loop)
+        self._advert_events: tuple = ()
+        self._contact_refresh_handle = None
 
         # contact notes  { key: str }
         self._notes: dict[str, str] = {}
@@ -279,6 +287,19 @@ class NodeRadio:
         """
         self._sub_tokens = []
 
+        # Advert / path-update events tell us a (possibly new) node was heard, so the
+        # contact list must be re-fetched. Resolve the members defensively: the pinned
+        # meshcore lib is >=0.4.1 (not an exact API), so a missing member must degrade
+        # to "no auto-refresh", never crash. Never reference EventType.ADVERTISEMENT /
+        # PATH_UPDATE by name outside this guarded resolution.
+        self._advert_events = tuple(
+            e for e in (
+                getattr(EventType, "ADVERTISEMENT", None),
+                getattr(EventType, "PATH_UPDATE", None),
+            )
+            if e is not None
+        )
+
         try:
             params = inspect.signature(self._mc.subscribe).parameters
             supports_event_type = "event_type" in params or len(params) >= 2
@@ -291,7 +312,7 @@ class NodeRadio:
                 EventType.CHANNEL_MSG_RECV,
                 EventType.MSG_SENT,
                 EventType.ACK,
-            )
+            ) + self._advert_events
 
             try:
                 for event_type in event_types:
@@ -401,6 +422,7 @@ class NodeRadio:
         except Exception as exc:
             self._emit_log(f"Disconnect warning: {exc}", "warn")
         finally:
+            self._cancel_contacts_refresh()
             self._mc = self._fetch_task = self._ping_task = self._advert_task = None
             self._sub_tokens = []
             self._online = False
@@ -877,8 +899,54 @@ class NodeRadio:
                 self._advance_pending(event)
             elif et == EventType.ACK:
                 self._confirm_delivery(event)
+            elif et in self._advert_events:
+                # A node was heard (advert / path update) — its contact may be new or
+                # updated. Coalesce bursts into one debounced re-fetch.
+                self._schedule_contacts_refresh()
         except Exception as exc:
             self._emit_log(f"Event handler error: {exc}", "err")
+
+    # ── advert-driven contact refresh (debounced) ─────────────────────────────
+    #
+    # Called from _on_mc_event, which the meshcore lib dispatches on the radio
+    # asyncio loop. We therefore schedule work on that loop directly and must NOT
+    # use the public refresh_contacts() -> _submit(), which blocks on
+    # run_coroutine_threadsafe(...).result() and would deadlock on its own loop.
+
+    def _schedule_contacts_refresh(self):
+        """Debounce advert bursts into a single contact re-fetch on the radio loop."""
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        if self._contact_refresh_handle is not None:
+            self._contact_refresh_handle.cancel()
+        self._contact_refresh_handle = loop.call_later(
+            _CONTACT_REFRESH_DEBOUNCE, self._fire_contacts_refresh
+        )
+
+    def _fire_contacts_refresh(self):
+        self._contact_refresh_handle = None
+        # A late advert must never fetch against a torn-down / stale connection.
+        if not self._online or self._mc is None or self._loop is None:
+            return
+        task = self._loop.create_task(self._load_contacts())
+        task.add_done_callback(self._contacts_refresh_done)
+
+    def _contacts_refresh_done(self, task):
+        # Surface async task failures instead of leaking an unhandled-task exception
+        # (e.g. a transient disconnect while the fetch was in flight).
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            self._emit_log(f"Contact refresh failed: {exc}", "warn")
+
+    def _cancel_contacts_refresh(self):
+        handle = self._contact_refresh_handle
+        self._contact_refresh_handle = None
+        if handle is not None:
+            handle.cancel()
 
     def _split_received_payload(self, payload) -> "tuple[str, str, int | None]":
         """Return (sender, text, hops), resolving MeshCore pubkey prefixes."""
