@@ -25,7 +25,11 @@ RECONNECT_DELAY     = 5             # seconds before auto-reconnect attempt
 RECONNECT_MAX       = 10            # maximum reconnect attempts (0 = unlimited)
 
 # ── session / persistence ─────────────────────────────────────────────────────
-APP_DIR             = os.path.join(os.path.expanduser("~"), ".meshcore_nm")
+# MESHCORE_NM_HOME relocates this state directory. The default is unchanged, so a standalone
+# run behaves exactly as before; it exists for supervisors that run the app under a read-only
+# HOME (systemd ProtectHome=read-only), where creating ~/.meshcore_nm below would fail with
+# EROFS before the GUI is ever built.
+APP_DIR             = os.environ.get("MESHCORE_NM_HOME") or os.path.join(os.path.expanduser("~"), ".meshcore_nm")
 SETTINGS_FILE       = os.path.join(APP_DIR, "settings.json")
 NOTES_FILE          = os.path.join(APP_DIR, "notes.json")
 SESSION_LOG_DIR     = os.path.join(APP_DIR, "sessions")
