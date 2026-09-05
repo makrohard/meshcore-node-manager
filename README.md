@@ -1,3 +1,13 @@
+> [!IMPORTANT]
+> **Unmaintained, archived (read-only).**
+>
+> This desktop Node Manager is no longer maintained. **LoRaHAM Pi Control**
+> replaced it in v0.2.3 with a browser GUI,
+> [meshcore-webui](https://github.com/adradr/meshcore-webui), reached through the
+> LHPC TLS proxy so it needs no graphical stack and runs headless on a Pi.
+>
+> Nothing is deleted. The code stays readable and clonable here.
+
 # MeshCore Node Manager
 
 [![Release](https://img.shields.io/github/v/release/2E0LXY/meshcore-node-manager?style=flat-square&color=89b4fa&label=release)](https://github.com/2E0LXY/meshcore-node-manager/releases/latest) [![License](https://img.shields.io/badge/licence-MIT-a6e3a1?style=flat-square)](LICENSE) [![Python](https://img.shields.io/badge/python-3.10%2B-cba6f7?style=flat-square)](https://python.org)
